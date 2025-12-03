@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hand-Controlled Audio Player</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Main Container with Two-Column Layout -->
+    <div class="main-container">
+        
+        <!-- Left Column: Camera/Hand Recognition -->
+        <div class="left-column">
+            <div class="camera-section">
+                <h1>👆 Hand Control</h1>
+                <p class="subtitle">Control audio with hand gestures</p>
+                
+                <div class="loading" id="loadingMessage">
+                    Loading MediaPipe Hand Detection... Please wait.
+                </div>
+
+                <div id="errorMessage" class="error-message" style="display: none;"></div>
+                
+                <!-- Hand Recognition Section -->
+                <div class="hand-section" id="handSection" style="display: none;">
+                    <div class="video-container">
+                        <div class="video-wrapper">
+                            <video id="inputVideo" autoplay muted playsinline></video>
+                            <canvas id="outputCanvas"></canvas>
+                            <div class="detection-overlay" id="detectionStatus">
+                                <div id="rotationText">No Rotation</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="gesture-status">
+                        <div class="status-card">
+                            <div class="status-label">Current Direction</div>
+                            <div class="status-value" id="currentDirection">
+                                <span>⊙</span>
+                            </div>
+                        </div>
+                        
+                        <div class="status-card">
+                            <div class="status-label">Rotation Angle</div>
+                            <div class="status-value" id="angleDisplay">0°</div>
+                        </div>
+                        
+                        <div class="status-card">
+                            <div class="status-label">Rotation Speed</div>
+                            <div class="status-value" id="speedDisplay">0°/s</div>
+                        </div>
+                        
+                        <div class="status-card">
+                            <div class="status-label">Hand Detected</div>
+                            <div class="status-value" id="fingerStatus">❌</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Control Mode Toggle -->
+                <div class="control-mode-section">
+                    <h3>🎛️ Control Mode</h3>
+                    <div class="mode-toggle">
+                        <label class="toggle-label">
+                            <input type="radio" name="controlMode" value="distance" id="distanceMode" checked>
+                            <span class="radio-custom"></span>
+                            <strong>Distance Mode</strong>
+                            <span class="mode-desc">Rotation controls speed</span>
+                        </label>
+                        <label class="toggle-label">
+                            <input type="radio" name="controlMode" value="speed" id="speedMode">
+                            <span class="radio-custom"></span>
+                            <strong>Speed Mode</strong>
+                            <span class="mode-desc">Fingertip velocity controls speed</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Gesture Instructions -->
+                <div class="gesture-instructions">
+                    <h3>🤚 Hand Gesture Controls</h3>
+                    <div id="distanceModeInstructions">
+                        <ul class="gesture-list">
+                            <li><span class="gesture-icon">👆</span> <strong>Point index finger up</strong> to enable gesture control</li>
+                            <li><span class="gesture-icon">↻</span> <strong>Rotate clockwise</strong> for forward playback</li>
+                            <li><span class="gesture-icon">↺</span> <strong>Rotate counter-clockwise</strong> for backward playback</li>
+                        </ul>
+                    </div>
+                    <div id="speedModeInstructions" style="display: none;">
+                        <ul class="gesture-list">
+                            <li><span class="gesture-icon">👆</span> <strong>Point index finger up</strong> to enable gesture control</li>
+                            <li><span class="gesture-icon">↻</span> <strong>Rotate clockwise</strong> for forward playback (speed based on rotation velocity)</li>
+                            <li><span class="gesture-icon">↺</span> <strong>Rotate counter-clockwise</strong> for backward playback in chunks</li>
+                            <li><span class="gesture-icon">⊙</span> <strong>Hold still</strong> to drift to default speed</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Right Column: Audio Controls -->
+        <div class="right-column">
+            <div class="audio-section">
+                <h2>🎵 Audio Controls</h2>
+                
+                <h3>📁 Load Audio</h3>
+                <div class="upload-section">
+                    <input type="file" id="audioFile" accept="audio/*">
+                    <button id="loadDefaultBtn" class="load-default-btn">Load Default Audio</button>
+                </div>
+
+                <!-- Hidden HTML5 audio element for pitch-preserving forward playback -->
+                <audio id="htmlAudioElement" style="display: none;" preload="auto"></audio>
+
+                <div id="controls" style="display: none;">
+                    <div class="time-section">
+                        <div class="time-display">
+                            <span id="currentTime">0:00</span>
+                            <span id="duration">0:00</span>
+                        </div>
+                        <input type="range" id="seekBar" min="0" max="100" value="0" step="0.1">
+                    </div>
+
+                    <div class="speed-section">
+                        <label for="speedBar">Input Speed: <span id="speedValue">1.00</span>x</label>
+                        <input type="range" id="speedBar" min="-4" max="4" value="1" step="0.01" list="speed-tick-marks">
+                        <datalist id="speed-tick-marks">
+                            <option value="-4"></option>
+                            <option value="-2"></option>
+                            <option value="-1"></option>
+                            <option value="1"></option>
+                            <option value="2"></option>
+                            <option value="4"></option>
+                        </datalist>
+                        <div class="speed-labels">
+                            <span>◄ Backward (-4x)</span>
+                            <span>Forward (4x) ►</span>
+                        </div>
+
+                        <div style="margin-top: 15px;">
+                            <label for="filteredSpeedBar">Playback Speed: <span id="filteredSpeedValue">1.00</span>x</label>
+                            <input type="range" id="filteredSpeedBar" min="-4" max="4" value="1" step="0.01" disabled>
+                        </div>
+
+                        <!-- Dynamic Alpha Display and Controls -->
+                        <div class="alpha-section" style="margin-top: 15px; padding: 15px; background: rgba(0, 0, 0, 0.2); border-radius: 8px;">
+                            <h4 style="margin-top: 0;">Smoothing Parameters</h4>
+                            
+                            <div class="alpha-status" style="margin-bottom: 15px; padding: 10px; background: rgba(0, 0, 0, 0.3); border-radius: 5px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <span><strong>Active Alpha:</strong></span>
+                                    <span id="activeAlphaDisplay" style="font-size: 1.2em; font-weight: bold; color: #4ade80;">0.0100</span>
+                                </div>
+                                <div style="margin-top: 5px; font-size: 0.9em; color: #aaa;">
+                                    <span id="alphaStateText">Hand detected - Responsive mode</span>
+                                </div>
+                            </div>
+                            
+                            <div style="margin-bottom: 10px;">
+                                <label for="alphaFingerInput">
+                                    Alpha (Finger Detected): 
+                                    <span id="alphaFingerValue" style="font-weight: bold; color: #4ade80;">0.010</span>
+                                </label>
+                                <input type="number" id="alphaFingerInput" value="0.01" step="0.001" min="0.001" max="1" style="width: 80px;">
+                                <span class="param-desc">Responsive tracking</span>
+                            </div>
+                            
+                            <div style="margin-bottom: 10px;">
+                                <label for="alphaNoFingerInput">
+                                    Alpha (No Finger): 
+                                    <span id="alphaNoFingerValue" style="font-weight: bold; color: #f87171;">0.001</span>
+                                </label>
+                                <input type="number" id="alphaNoFingerInput" value="0.001" step="0.0001" min="0.0001" max="1" style="width: 80px;">
+                                <span class="param-desc">Slow drift</span>
+                            </div>
+                            
+                            <div style="margin-top: 10px;">
+                                <label for="driftTargetInput">
+                                    Drift Target Speed: 
+                                    <span id="driftTargetValue" style="font-weight: bold;">0.70</span>x
+                                </label>
+                                <input type="number" id="driftTargetInput" value="0.7" step="0.05" min="0.1" max="2" style="width: 80px;">
+                                <span class="param-desc">Target when idle (positive only)</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="params-section">
+                        <h3>Navigation Parameters <span class="params-info">(updates with speed)</span></h3>
+                        <div class="param-grid">
+                            <div class="param-item">
+                                <label for="segmentDuration">Segment Duration (s)</label>
+                                <input type="number" id="segmentDuration" value="2.0" step="0.1" min="0.5" max="5">
+                                <span class="param-desc">Chunk duration</span>
+                            </div>
+                            <div class="param-item">
+                                <label for="segmentStep">Segment Step (s)</label>
+                                <input type="number" id="segmentStep" value="1.5" step="0.1" min="0.1" max="4">
+                                <span class="param-desc">Distance between chunks</span>
+                            </div>
+                            <div class="param-item">
+                                <label for="segmentInterval">Segment Interval (ms)</label>
+                                <input type="number" id="segmentInterval" value="1200" step="50" min="100" max="3000">
+                                <span class="param-desc">Time between chunks</span>
+                            </div>
+                            <div class="param-item">
+                                <label for="fadeDuration">Fade Duration (s)</label>
+                                <input type="number" id="fadeDuration" value="0.25" step="0.05" min="0" max="1">
+                                <span class="param-desc">Crossfade time</span>
+                            </div>
+                        </div>
+                        <div class="param-info-box">
+                            <strong>Effective Values (at current speed):</strong>
+                            <div class="effective-params">
+                                <span>Step: <strong id="effectiveStep">1.5</strong>s</span>
+                                <span>Interval: <strong id="effectiveInterval">1200</strong>ms</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="button-section">
+                        <button id="playBtn">Play</button>
+                        <button id="pauseBtn" style="display: none;">Pause</button>
+                        <button id="resetBtn">Reset</button>
+                    </div>
+
+                    <div>
+                        <h3>📊 How it works:</h3>
+                        <p>• <strong>Input Speed:</strong> Controlled by hand gestures (raw input)</p>
+                        <p>• <strong>Playback Speed:</strong> Smoothed speed (what you hear)</p>
+                        <p>• <strong>Alpha (Finger):</strong> Fast response when hand detected</p>
+                        <p>• <strong>Alpha (No Finger):</strong> Slow drift towards target</p>
+                        <p>• <strong>Forward (positive):</strong> Normal playback with tempo control</p>
+                        <p>• <strong>Backward (negative):</strong> Chunk-based navigation</p>
+                        <p>• Speed adjustments preserve pitch in both directions</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Load MediaPipe from CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <!-- Load our custom script -->
+    <script src="script.js"></script>
+</body>
+</html>
